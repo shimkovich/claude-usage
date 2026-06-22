@@ -19,23 +19,34 @@ anywhere else).
 
 ## Install
 
+**Just use it — no clone needed.** One line copies the `cu` CLI to `~/.local/bin`
+and the widget into Übersicht; nothing else stays on disk, so you don't need to
+keep (or even download) the repo:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/shimkovich/claude-usage/main/install.sh | bash
+```
+
+**Clone it** if you want to read the code or hack on it. This symlinks `cu` to the
+checkout so your edits are live, so keep the folder around:
+
 ```sh
 git clone https://github.com/shimkovich/claude-usage.git
 cd claude-usage
 ./install.sh
 ```
 
-That symlinks `cu` onto your `PATH`, installs a launchd agent that refreshes the
-widget data every 5 minutes, and drops the widget into Übersicht. If Übersicht
-isn't installed yet, the script tells you how and you re-run it afterward.
+Either way, the installer puts `cu` on your `PATH`, installs a launchd agent that
+refreshes the widget data every 5 minutes, and drops the widget into Übersicht. If
+Übersicht isn't installed yet, the script tells you how and you re-run it afterward.
 
 ### Install with Claude Code
 
-If you use Claude Code, just point it at this repo and say:
+If you use Claude Code, just say:
 
-> Clone https://github.com/shimkovich/claude-usage and install the widget.
+> Install the widget from https://github.com/shimkovich/claude-usage
 
-Claude will read this README and run `./install.sh` for you.
+Claude will read this README and run the one-liner above for you.
 
 ## CLI usage
 
@@ -69,8 +80,14 @@ plans.
 ## Uninstall
 
 ```sh
-./uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/shimkovich/claude-usage/main/uninstall.sh | bash
 ```
+
+Or, from a clone, `./uninstall.sh`.
 
 Removes the launchd agent, the `cu` symlink, and the widget. Your cached data in
 `~/.config/claude-usage` is left in place — delete it manually if you want.
+
+## License
+
+[MIT](LICENSE) © Vlad Shimkovich
