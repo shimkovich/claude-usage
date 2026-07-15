@@ -9,7 +9,7 @@ It reads the JSONL logs Claude Code already writes to `~/.claude/projects/` and
 pulls your real 5-hour / weekly limit utilization from the Claude usage API
 (using the OAuth token already in your macOS Keychain — nothing is stored or sent
 anywhere else). When Codex is installed and signed in, the same widget also shows
-your remaining Codex weekly limit through Codex's local app-server interface.
+your Codex weekly limit utilization through Codex's local app-server interface.
 
 ## Requirements
 

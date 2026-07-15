@@ -35,9 +35,9 @@ function barColor(pct) {
   return "#6EE7B7";
 }
 
-function usageBar(label, pct, showRemaining = false, title = "") {
+function usageBar(label, pct, title = "") {
   const available = typeof pct === "number";
-  const displayPct = available ? (showRemaining ? 100 - pct : pct) : 0;
+  const displayPct = available ? pct : 0;
   const clamped = Math.min(100, Math.max(0, displayPct));
   const c = available ? barColor(pct) : "#666";
   return (
@@ -118,7 +118,7 @@ export const render = ({ output }) => {
       <div style={{ marginBottom: 14 }}>
         {usageBar(fmtRemaining(currentWindow5h?.windowEnd) || "5h", pct5h)}
         {usageBar(fmtRemaining(weekEnd) || "Week", pctWeek)}
-        {usageBar("CODEX", codexWeekly?.utilization, true, "Weekly limit remaining; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
+        {usageBar("CODEX", codexWeekly?.utilization, "Weekly limit used; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
       </div>
 
       {/* Bar chart */}

@@ -2,12 +2,12 @@
 
 ## What This Is
 
-Claude Code usage tracker. Shows per-project token breakdown across sessions — which project folder is eating your weekly limit. The Übersicht widget also shows the remaining Codex weekly limit.
+Claude Code usage tracker. Shows per-project token breakdown across sessions — which project folder is eating your weekly limit. The Übersicht widget also shows Codex weekly limit utilization.
 
 ## Architecture
 
 - **`cu` CLI** (`./cu`) — single-file Python 3, stdlib only. Scans `~/.claude/projects/` JSONL files for usage data, groups by project (derived from `cwd` field), and reads the Codex weekly limit through the local authenticated `codex app-server`. Uses incremental scan cache (`~/.config/claude-usage/scan-cache.json`) to avoid re-reading unchanged files.
-- **Übersicht widget** (`claude-usage.jsx`) — reads pre-computed JSON from `~/.config/claude-usage/widget-data.json` via `cat`. Shows Claude's 5-hour and weekly utilization, the remaining Codex weekly limit, and the 7-day stacked bar chart with per-project legend. Lives in `~/Library/Application Support/Übersicht/widgets/`.
+- **Übersicht widget** (`claude-usage.jsx`) — reads pre-computed JSON from `~/.config/claude-usage/widget-data.json` via `cat`. Shows Claude's 5-hour and weekly utilization, Codex weekly utilization, and the 7-day stacked bar chart with per-project legend. Lives in `~/Library/Application Support/Übersicht/widgets/`.
 - **launchd plist** — runs `cu widget-data` every 5 minutes to keep widget data fresh.
 
 ## CLI Usage
