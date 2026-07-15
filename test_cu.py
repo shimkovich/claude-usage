@@ -1,5 +1,6 @@
 import importlib.machinery
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
@@ -68,6 +69,86 @@ class FetchUsageApiTests(unittest.TestCase):
             result = self.cu.fetch_usage_api()
 
         self.assertIsNone(result)
+
+
+class FetchCodexWeeklyUsageTests(unittest.TestCase):
+    def setUp(self):
+        self.cu = load_cu_module()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.cu.CODEX_USAGE_CACHE_FILE = Path(self.tmpdir.name) / "codex-usage-api-cache.json"
+
+    def _write_cache(self, cached_at_delta, resets_at_delta):
+        now = datetime.now(timezone.utc)
+        payload = {
+            "_cached_at": (now - cached_at_delta).isoformat(),
+            "utilization": 12,
+            "windowEnd": (now + resets_at_delta).isoformat(),
+        }
+        self.cu.CODEX_USAGE_CACHE_FILE.write_text(json.dumps(payload))
+        return payload
+
+    def test_returns_fresh_cache_without_starting_app_server(self):
+        cached = self._write_cache(cached_at_delta=timedelta(seconds=60), resets_at_delta=timedelta(days=2))
+
+        with mock.patch.object(self.cu, "_find_codex_executable") as mocked_find:
+            result = self.cu.fetch_codex_weekly_usage()
+
+        self.assertEqual(result["utilization"], cached["utilization"])
+        mocked_find.assert_not_called()
+
+    def test_fetches_weekly_window_from_app_server(self):
+        resets_at = int((datetime.now(timezone.utc) + timedelta(days=6)).timestamp())
+        payload = {
+            "rateLimits": {
+                "primary": {"usedPercent": 30, "windowDurationMins": 300, "resetsAt": resets_at},
+                "secondary": {"usedPercent": 4, "windowDurationMins": 10080, "resetsAt": resets_at},
+            },
+            "rateLimitsByLimitId": {
+                "codex": {
+                    "primary": {"usedPercent": 30, "windowDurationMins": 300, "resetsAt": resets_at},
+                    "secondary": {"usedPercent": 4, "windowDurationMins": 10080, "resetsAt": resets_at},
+                },
+            },
+        }
+
+        with mock.patch.object(self.cu, "_find_codex_executable", return_value="/tmp/codex"), \
+                mock.patch.object(self.cu, "_request_codex_rate_limits", return_value=payload) as mocked_request:
+            result = self.cu.fetch_codex_weekly_usage()
+
+        self.assertEqual(result["utilization"], 4)
+        self.assertEqual(datetime.fromisoformat(result["windowEnd"]).timestamp(), resets_at)
+        mocked_request.assert_called_once_with("/tmp/codex")
+
+    def test_app_server_request_keeps_stdin_open_until_response(self):
+        payload = {"rateLimits": {"primary": {"usedPercent": 4, "windowDurationMins": 10080}}}
+        process = mock.Mock()
+        process.stdin = mock.Mock()
+        process.stdout = io.StringIO(json.dumps({"id": 2, "result": payload}) + "\n")
+        process.poll.return_value = None
+
+        with mock.patch.object(self.cu.subprocess, "Popen", return_value=process) as mocked_popen, \
+                mock.patch.object(self.cu.select, "select", return_value=([process.stdout], [], [])):
+            result = self.cu._request_codex_rate_limits("/tmp/codex")
+
+        self.assertEqual(result, payload)
+        request_messages = [json.loads(call.args[0]) for call in process.stdin.write.call_args_list]
+        self.assertEqual(request_messages[0]["method"], "initialize")
+        self.assertEqual(request_messages[1]["method"], "initialized")
+        self.assertEqual(request_messages[2]["method"], "account/rateLimits/read")
+        process.stdin.flush.assert_called_once_with()
+        process.terminate.assert_called_once_with()
+        mocked_popen.assert_called_once()
+        self.assertEqual(mocked_popen.call_args.args[0], ["/tmp/codex", "app-server"])
+
+    def test_returns_valid_stale_cache_when_app_server_fails(self):
+        cached = self._write_cache(cached_at_delta=timedelta(minutes=10), resets_at_delta=timedelta(days=2))
+
+        with mock.patch.object(self.cu, "_find_codex_executable", return_value="/tmp/codex"), \
+                mock.patch.object(self.cu, "_request_codex_rate_limits", return_value=None):
+            result = self.cu.fetch_codex_weekly_usage()
+
+        self.assertEqual(result["utilization"], cached["utilization"])
 
 
 class BoundaryParsingTests(unittest.TestCase):

@@ -2,12 +2,12 @@
 
 ## What This Is
 
-Claude Code usage tracker. Shows per-project token breakdown across sessions — which project folder is eating your weekly limit. CLI + Übersicht macOS widget.
+Claude Code usage tracker. Shows per-project token breakdown across sessions — which project folder is eating your weekly limit. The Übersicht widget also shows the remaining Codex weekly limit.
 
 ## Architecture
 
-- **`cu` CLI** (`./cu`) — single-file Python 3, stdlib only. Scans `~/.claude/projects/` JSONL files for usage data, groups by project (derived from `cwd` field). Uses incremental scan cache (`~/.config/claude-usage/scan-cache.json`) to avoid re-reading unchanged files.
-- **Übersicht widget** (`claude-usage.jsx`) — reads pre-computed JSON from `~/.config/claude-usage/widget-data.json` via `cat`. Shows 7-day stacked bar chart with per-project legend. Lives in `~/Library/Application Support/Übersicht/widgets/`.
+- **`cu` CLI** (`./cu`) — single-file Python 3, stdlib only. Scans `~/.claude/projects/` JSONL files for usage data, groups by project (derived from `cwd` field), and reads the Codex weekly limit through the local authenticated `codex app-server`. Uses incremental scan cache (`~/.config/claude-usage/scan-cache.json`) to avoid re-reading unchanged files.
+- **Übersicht widget** (`claude-usage.jsx`) — reads pre-computed JSON from `~/.config/claude-usage/widget-data.json` via `cat`. Shows Claude's 5-hour and weekly utilization, the remaining Codex weekly limit, and the 7-day stacked bar chart with per-project legend. Lives in `~/Library/Application Support/Übersicht/widgets/`.
 - **launchd plist** — runs `cu widget-data` every 5 minutes to keep widget data fresh.
 
 ## CLI Usage
@@ -28,6 +28,7 @@ cu config              # open config in $EDITOR
 ~/.claude/projects/*/*.jsonl  →  cu (scan + aggregate)  →  terminal output
                               ↕                          →  ~/.config/claude-usage/widget-data.json  →  Übersicht widget
               scan-cache.json (incremental)
+codex app-server              →  cu (weekly limit)      →  widget-data.json
 ```
 
 launchd runs `cu widget-data` every 5 min → writes JSON file. Übersicht widget reads it via `cat` (instant).
@@ -40,6 +41,7 @@ launchd runs `cu widget-data` every 5 min → writes JSON file. Übersicht widge
 - `~/.config/claude-usage/config.json` — user config (colors, etc.)
 - `~/.config/claude-usage/widget-data.json` — pre-computed widget data
 - `~/.config/claude-usage/scan-cache.json` — incremental scan cache (keyed by file mtime+size)
+- `~/.config/claude-usage/codex-usage-api-cache.json` — five-minute Codex weekly limit cache
 
 ## Setup
 
@@ -51,6 +53,7 @@ reverses it.
 
 - Primary metric is `output_tokens` (main rate-limited resource on Max plans)
 - Weekly limit is the primary focus; 5h window is secondary
+- Codex integration uses `account/rateLimits/read` over the documented local app-server protocol; select the weekly window by its 10,080-minute duration.
 - Scan uses incremental cache: first run ~1s (reads all JSONL files), subsequent runs ~0.3s (only changed files). Cache keyed by file path + mtime + size.
 - String pre-filter (`'"usage"' not in line`) skips ~80% of JSONL lines before JSON parsing
 - No external dependencies — stdlib only Python, matches `tt` (time-tracker) conventions

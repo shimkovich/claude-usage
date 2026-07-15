@@ -4,10 +4,13 @@
 import argparse
 import json
 import os
+import select
+import shutil
 import signal
 import ssl
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -40,7 +43,9 @@ def color(text, c):
 # ── Claude API ─────────────────────────────────────────────────────────────
 
 USAGE_CACHE_FILE = CONFIG_DIR / "usage-api-cache.json"
+CODEX_USAGE_CACHE_FILE = CONFIG_DIR / "codex-usage-api-cache.json"
 USAGE_CACHE_TTL = 300  # 5 minutes
+CODEX_WEEK_MINUTES = 7 * 24 * 60
 
 
 def _ssl_context():
@@ -54,14 +59,24 @@ def _ssl_context():
     return ctx
 
 
-def _load_usage_cache():
+def _load_api_cache(cache_file):
     try:
-        with open(USAGE_CACHE_FILE) as f:
+        with open(cache_file) as f:
             cached = json.load(f)
         cached_at = datetime.fromisoformat(cached["_cached_at"])
         return cached, cached_at
     except (json.JSONDecodeError, OSError, KeyError, ValueError):
         return None, None
+
+
+def _save_api_cache(cache_file, data):
+    data["_cached_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(cache_file, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
 
 
 def _cached_usage_has_current_window(cached, now):
@@ -77,7 +92,7 @@ def _cached_usage_has_current_window(cached, now):
 def fetch_usage_api():
     """Fetch usage windows from Claude API. Returns cached if fresh."""
     now = datetime.now(timezone.utc)
-    cached, cached_at = _load_usage_cache()
+    cached, cached_at = _load_api_cache(USAGE_CACHE_FILE)
     if cached_at and (now - cached_at).total_seconds() < USAGE_CACHE_TTL and _cached_usage_has_current_window(cached, now):
         return cached
 
@@ -105,16 +120,153 @@ def fetch_usage_api():
     except Exception:
         return cached if _cached_usage_has_current_window(cached, now) else None
 
-    # Cache it
-    data["_cached_at"] = datetime.now(timezone.utc).isoformat()
-    try:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(USAGE_CACHE_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
+    _save_api_cache(USAGE_CACHE_FILE, data)
 
     return data
+
+
+# ── Codex app-server ───────────────────────────────────────────────────────
+
+def _cached_codex_usage_has_current_window(cached, now):
+    if not cached:
+        return False
+    try:
+        resets_at = datetime.fromisoformat(cached["windowEnd"])
+        return resets_at > now
+    except (TypeError, ValueError, KeyError):
+        return False
+
+
+def _find_codex_executable():
+    found = shutil.which("codex")
+    if found:
+        return found
+
+    candidates = [
+        Path.home() / ".local" / "bin" / "codex",
+        Path.home() / ".codex" / "packages" / "standalone" / "current" / "bin" / "codex",
+        Path("/opt/homebrew/bin/codex"),
+        Path("/usr/local/bin/codex"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def _extract_codex_weekly_usage(payload):
+    snapshots = []
+    by_limit_id = payload.get("rateLimitsByLimitId")
+    if isinstance(by_limit_id, dict):
+        codex_snapshot = by_limit_id.get("codex")
+        if isinstance(codex_snapshot, dict):
+            snapshots.append(codex_snapshot)
+
+    legacy_snapshot = payload.get("rateLimits")
+    if isinstance(legacy_snapshot, dict) and legacy_snapshot not in snapshots:
+        snapshots.append(legacy_snapshot)
+
+    for snapshot in snapshots:
+        for key in ("primary", "secondary"):
+            window = snapshot.get(key)
+            if not isinstance(window, dict) or window.get("windowDurationMins") != CODEX_WEEK_MINUTES:
+                continue
+            used_percent = window.get("usedPercent")
+            if not isinstance(used_percent, (int, float)) or isinstance(used_percent, bool):
+                continue
+            resets_at = window.get("resetsAt")
+            window_end = None
+            if isinstance(resets_at, (int, float)) and not isinstance(resets_at, bool):
+                window_end = datetime.fromtimestamp(resets_at, timezone.utc).isoformat()
+            return {
+                "utilization": used_percent,
+                "windowEnd": window_end,
+            }
+    return None
+
+
+def _request_codex_rate_limits(codex):
+    messages = [
+        {
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "clientInfo": {
+                    "name": "claude_usage_widget",
+                    "title": "Claude Usage Widget",
+                    "version": "0.1.0",
+                },
+            },
+        },
+        {"method": "initialized", "params": {}},
+        {"method": "account/rateLimits/read", "id": 2, "params": None},
+    ]
+
+    process = None
+    try:
+        process = subprocess.Popen(
+            [codex, "app-server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+        for message in messages:
+            process.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+        process.stdin.flush()
+
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([process.stdout], [], [], deadline - time.monotonic())
+            if not ready:
+                break
+            line = process.stdout.readline()
+            if not line:
+                break
+            try:
+                message = json.loads(line)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if message.get("id") == 2 and isinstance(message.get("result"), dict):
+                return message["result"]
+    except (OSError, ValueError):
+        return None
+    finally:
+        if process:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+    return None
+
+
+def fetch_codex_weekly_usage():
+    """Fetch the Codex weekly limit through the authenticated local app-server."""
+    now = datetime.now(timezone.utc)
+    cached, cached_at = _load_api_cache(CODEX_USAGE_CACHE_FILE)
+    if cached_at and (now - cached_at).total_seconds() < USAGE_CACHE_TTL and _cached_codex_usage_has_current_window(cached, now):
+        return cached
+
+    codex = _find_codex_executable()
+    if not codex:
+        return cached if _cached_codex_usage_has_current_window(cached, now) else None
+
+    payload = _request_codex_rate_limits(codex)
+    usage = _extract_codex_weekly_usage(payload) if payload else None
+
+    if not usage:
+        return cached if _cached_codex_usage_has_current_window(cached, now) else None
+
+    _save_api_cache(CODEX_USAGE_CACHE_FILE, usage)
+    return usage
 
 
 def get_week_boundaries(usage_data=None):
@@ -594,6 +746,7 @@ def cmd_widget_data(args):
     now = datetime.now(timezone.utc)
     config = load_config()
     usage = fetch_usage_api()
+    codex_weekly = fetch_codex_weekly_usage()
 
     # Week boundaries from API
     week_start, week_end, week_util = get_week_boundaries(usage)
@@ -656,6 +809,7 @@ def cmd_widget_data(args):
             "utilization": util_5h,
             "windowEnd": window_end_5h.isoformat(),
         },
+        "codexWeekly": codex_weekly,
         "daily": daily_arr,
         "sortedProjects": sorted_projects,
         "projectTotals": project_totals,

@@ -35,14 +35,16 @@ function barColor(pct) {
   return "#6EE7B7";
 }
 
-function usageBar(label, pct) {
-  const clamped = Math.min(100, Math.max(0, pct));
-  const c = barColor(pct);
+function usageBar(label, pct, showRemaining = false, title = "") {
+  const available = typeof pct === "number";
+  const displayPct = available ? (showRemaining ? 100 - pct : pct) : 0;
+  const clamped = Math.min(100, Math.max(0, displayPct));
+  const c = available ? barColor(pct) : "#666";
   return (
-    <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+    <div title={title} style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
       <span style={{ width: 44, fontSize: 10, color: "#888", fontWeight: 600 }}>{label}</span>
       <span style={{ width: 38, fontSize: 11, color: c, fontVariantNumeric: "tabular-nums", textAlign: "right", marginRight: 8 }}>
-        {Math.round(pct)}%
+        {available ? Math.round(displayPct) + "%" : "--"}
       </span>
       <div style={{ flex: 1, height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden" }}>
         <div style={{ width: clamped + "%", height: "100%", background: c, borderRadius: 4, transition: "width 0.3s ease" }} />
@@ -78,7 +80,7 @@ export const render = ({ output }) => {
 
   if (data.error) return <div style={{ color: "#f66", fontSize: 12 }}>Error: {data.error}</div>;
 
-  const { weeklyWindow, currentWindow5h, daily, sortedProjects, projectTotals, colors, weekUtilization, weekEnd } = data;
+  const { weeklyWindow, currentWindow5h, codexWeekly, daily, sortedProjects, projectTotals, colors, weekUtilization, weekEnd } = data;
   const totalOut = weeklyWindow?.totalOutput || 0;
   const activeSessions = weeklyWindow?.activeSessions || 0;
   const total5h = currentWindow5h?.totalOutput || 0;
@@ -116,6 +118,7 @@ export const render = ({ output }) => {
       <div style={{ marginBottom: 14 }}>
         {usageBar(fmtRemaining(currentWindow5h?.windowEnd) || "5h", pct5h)}
         {usageBar(fmtRemaining(weekEnd) || "Week", pctWeek)}
+        {usageBar("CODEX", codexWeekly?.utilization, true, "Weekly limit remaining; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
       </div>
 
       {/* Bar chart */}

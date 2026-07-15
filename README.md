@@ -8,7 +8,8 @@ desktop widget keeps a live 7-day chart in the corner of your screen.
 It reads the JSONL logs Claude Code already writes to `~/.claude/projects/` and
 pulls your real 5-hour / weekly limit utilization from the Claude usage API
 (using the OAuth token already in your macOS Keychain — nothing is stored or sent
-anywhere else).
+anywhere else). When Codex is installed and signed in, the same widget also shows
+your remaining Codex weekly limit through Codex's local app-server interface.
 
 ## Requirements
 
@@ -16,6 +17,7 @@ anywhere else).
 - Python 3 (stdlib only — no `pip install`)
 - [Übersicht](https://tracesof.net/uebersicht/) for the desktop widget
   (`brew install --cask ubersicht`). The `cu` CLI works without it.
+- Optional: a signed-in `codex` CLI to show the Codex weekly limit row.
 
 ## Install
 
@@ -68,6 +70,7 @@ plans.
 ```
 ~/.claude/projects/*/*.jsonl  ->  cu (scan + aggregate)  ->  terminal output
                               \->  ~/.config/claude-usage/widget-data.json  ->  Übersicht widget
+codex app-server              ->  cu (weekly limit)      ->  widget-data.json
 ```
 
 - `cu` scans the JSONL session logs and groups usage by project (from each
@@ -75,6 +78,8 @@ plans.
   keyed by file mtime + size) keeps repeat runs fast.
 - The launchd agent runs `cu widget-data` every 5 minutes, writing
   `~/.config/claude-usage/widget-data.json`.
+- `cu` asks the authenticated local Codex app-server for the seven-day rate-limit
+  window. It does not read or store Codex credentials.
 - The widget (`claude-usage.jsx`) just `cat`s that JSON, so rendering is instant.
 
 ## Uninstall
