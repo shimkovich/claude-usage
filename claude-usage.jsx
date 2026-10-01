@@ -83,6 +83,7 @@ export const render = ({ output }) => {
   const { weeklyWindow, currentWindow5h, codexWeekly, daily, sortedProjects, projectTotals, colors, weekUtilization, weekEnd } = data;
   const totalOut = weeklyWindow?.totalOutput || 0;
   const activeSessions = weeklyWindow?.activeSessions || 0;
+  const codexAvailable = typeof codexWeekly?.utilization === "number";
   const total5h = currentWindow5h?.totalOutput || 0;
   const pct5h = currentWindow5h?.utilization || 0;
   const pctWeek = weekUtilization || 0;
@@ -118,8 +119,13 @@ export const render = ({ output }) => {
       <div style={{ marginBottom: 14 }}>
         {usageBar(fmtRemaining(currentWindow5h?.windowEnd) || "5h", pct5h)}
         {usageBar(fmtRemaining(weekEnd) || "Week", pctWeek)}
-        <div style={{ color: "#888", fontSize: 11, fontWeight: 600, letterSpacing: 1, marginTop: 12, marginBottom: 12 }}>
-          CODEX
+        <div style={{ display: "flex", alignItems: "center", marginTop: 12, marginBottom: 12 }}>
+          <span style={{ color: codexAvailable ? "#6EE7B7" : "#666", fontSize: 10, marginRight: 6 }}>
+            {codexAvailable ? "●" : "○"}
+          </span>
+          <span style={{ color: "#888", fontSize: 11, fontWeight: 600, letterSpacing: 1 }}>
+            CODEX
+          </span>
         </div>
         {usageBar(fmtRemaining(codexWeekly?.windowEnd) || "Week", codexWeekly?.utilization, "Weekly limit used; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
       </div>
