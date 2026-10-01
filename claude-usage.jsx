@@ -118,7 +118,10 @@ export const render = ({ output }) => {
       <div style={{ marginBottom: 14 }}>
         {usageBar(fmtRemaining(currentWindow5h?.windowEnd) || "5h", pct5h)}
         {usageBar(fmtRemaining(weekEnd) || "Week", pctWeek)}
-        {usageBar("CODEX", codexWeekly?.utilization, "Weekly limit used; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
+        <div style={{ color: "#888", fontSize: 11, fontWeight: 600, letterSpacing: 1, marginTop: 12, marginBottom: 12 }}>
+          CODEX
+        </div>
+        {usageBar(fmtRemaining(codexWeekly?.windowEnd) || "Week", codexWeekly?.utilization, "Weekly limit used; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
       </div>
 
       {/* Bar chart */}
