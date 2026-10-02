@@ -46,6 +46,7 @@ USAGE_CACHE_FILE = CONFIG_DIR / "usage-api-cache.json"
 CODEX_USAGE_CACHE_FILE = CONFIG_DIR / "codex-usage-api-cache.json"
 USAGE_CACHE_TTL = 300  # 5 minutes
 CODEX_WEEK_MINUTES = 7 * 24 * 60
+CODEX_5H_MINUTES = 5 * 60
 
 
 def _ssl_context():
@@ -127,14 +128,22 @@ def fetch_usage_api():
 
 # ── Codex app-server ───────────────────────────────────────────────────────
 
-def _cached_codex_usage_has_current_window(cached, now):
-    if not cached:
-        return False
+def _codex_window_is_current(window, now):
     try:
-        resets_at = datetime.fromisoformat(cached["windowEnd"])
-        return resets_at > now
+        return datetime.fromisoformat(window["windowEnd"]) > now
     except (TypeError, ValueError, KeyError):
         return False
+
+
+def _current_codex_usage(cached, now):
+    """Return cached usage with expired windows dropped, or None if none remain."""
+    if not isinstance(cached, dict):
+        return None
+    current = {}
+    for key in ("weekly", "fiveHour"):
+        window = cached.get(key)
+        current[key] = window if _codex_window_is_current(window, now) else None
+    return current if any(current.values()) else None
 
 
 def _find_codex_executable():
@@ -154,7 +163,7 @@ def _find_codex_executable():
     return None
 
 
-def _extract_codex_weekly_usage(payload):
+def _extract_codex_window(payload, duration_mins):
     snapshots = []
     by_limit_id = payload.get("rateLimitsByLimitId")
     if isinstance(by_limit_id, dict):
@@ -169,7 +178,7 @@ def _extract_codex_weekly_usage(payload):
     for snapshot in snapshots:
         for key in ("primary", "secondary"):
             window = snapshot.get(key)
-            if not isinstance(window, dict) or window.get("windowDurationMins") != CODEX_WEEK_MINUTES:
+            if not isinstance(window, dict) or window.get("windowDurationMins") != duration_mins:
                 continue
             used_percent = window.get("usedPercent")
             if not isinstance(used_percent, (int, float)) or isinstance(used_percent, bool):
@@ -183,6 +192,14 @@ def _extract_codex_weekly_usage(payload):
                 "windowEnd": window_end,
             }
     return None
+
+
+def _extract_codex_usage(payload):
+    usage = {
+        "weekly": _extract_codex_window(payload, CODEX_WEEK_MINUTES),
+        "fiveHour": _extract_codex_window(payload, CODEX_5H_MINUTES),
+    }
+    return usage if any(usage.values()) else None
 
 
 def _request_codex_rate_limits(codex):
@@ -248,22 +265,26 @@ def _request_codex_rate_limits(codex):
     return None
 
 
-def fetch_codex_weekly_usage():
-    """Fetch the Codex weekly limit through the authenticated local app-server."""
+def fetch_codex_usage():
+    """Fetch the Codex weekly and 5h limits through the authenticated local app-server.
+
+    Returns {"weekly": window|None, "fiveHour": window|None} or None.
+    """
     now = datetime.now(timezone.utc)
     cached, cached_at = _load_api_cache(CODEX_USAGE_CACHE_FILE)
-    if cached_at and (now - cached_at).total_seconds() < USAGE_CACHE_TTL and _cached_codex_usage_has_current_window(cached, now):
-        return cached
+    current_cached = _current_codex_usage(cached, now)
+    if cached_at and (now - cached_at).total_seconds() < USAGE_CACHE_TTL and current_cached:
+        return current_cached
 
     codex = _find_codex_executable()
     if not codex:
-        return cached if _cached_codex_usage_has_current_window(cached, now) else None
+        return current_cached
 
     payload = _request_codex_rate_limits(codex)
-    usage = _extract_codex_weekly_usage(payload) if payload else None
+    usage = _extract_codex_usage(payload) if payload else None
 
     if not usage:
-        return cached if _cached_codex_usage_has_current_window(cached, now) else None
+        return current_cached
 
     _save_api_cache(CODEX_USAGE_CACHE_FILE, usage)
     return usage
@@ -746,7 +767,7 @@ def cmd_widget_data(args):
     now = datetime.now(timezone.utc)
     config = load_config()
     usage = fetch_usage_api()
-    codex_weekly = fetch_codex_weekly_usage()
+    codex_usage = fetch_codex_usage() or {}
 
     # Week boundaries from API
     week_start, week_end, week_util = get_week_boundaries(usage)
@@ -809,7 +830,8 @@ def cmd_widget_data(args):
             "utilization": util_5h,
             "windowEnd": window_end_5h.isoformat(),
         },
-        "codexWeekly": codex_weekly,
+        "codexWeekly": codex_usage.get("weekly"),
+        "codex5h": codex_usage.get("fiveHour"),
         "daily": daily_arr,
         "sortedProjects": sorted_projects,
         "projectTotals": project_totals,

@@ -80,10 +80,10 @@ export const render = ({ output }) => {
 
   if (data.error) return <div style={{ color: "#f66", fontSize: 12 }}>Error: {data.error}</div>;
 
-  const { weeklyWindow, currentWindow5h, codexWeekly, daily, sortedProjects, projectTotals, colors, weekUtilization, weekEnd } = data;
+  const { weeklyWindow, currentWindow5h, codexWeekly, codex5h, daily, sortedProjects, projectTotals, colors, weekUtilization, weekEnd } = data;
   const totalOut = weeklyWindow?.totalOutput || 0;
   const activeSessions = weeklyWindow?.activeSessions || 0;
-  const codexAvailable = typeof codexWeekly?.utilization === "number";
+  const codexAvailable = typeof codexWeekly?.utilization === "number" || typeof codex5h?.utilization === "number";
   const total5h = currentWindow5h?.totalOutput || 0;
   const pct5h = currentWindow5h?.utilization || 0;
   const pctWeek = weekUtilization || 0;
@@ -127,6 +127,7 @@ export const render = ({ output }) => {
             CODEX
           </span>
         </div>
+        {usageBar(fmtRemaining(codex5h?.windowEnd) || "5h", codex5h?.utilization, "5-hour limit used; resets in " + (fmtRemaining(codex5h?.windowEnd) || "unknown"))}
         {usageBar(fmtRemaining(codexWeekly?.windowEnd) || "Week", codexWeekly?.utilization, "Weekly limit used; resets in " + (fmtRemaining(codexWeekly?.windowEnd) || "unknown"))}
       </div>
 

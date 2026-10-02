@@ -9,7 +9,7 @@ It reads the JSONL logs Claude Code already writes to `~/.claude/projects/` and
 pulls your real 5-hour / weekly limit utilization from the Claude usage API
 (using the OAuth token already in your macOS Keychain — nothing is stored or sent
 anywhere else). When Codex is installed and signed in, the same widget also shows
-your Codex weekly limit utilization through Codex's local app-server interface.
+your Codex 5-hour / weekly limit utilization through Codex's local app-server interface.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ your Codex weekly limit utilization through Codex's local app-server interface.
 - Python 3 (stdlib only — no `pip install`)
 - [Übersicht](https://tracesof.net/uebersicht/) for the desktop widget
   (`brew install --cask ubersicht`). The `cu` CLI works without it.
-- Optional: a signed-in `codex` CLI to show the Codex weekly limit row.
+- Optional: a signed-in `codex` CLI to show the Codex 5-hour and weekly limit rows.
 
 ## Install
 
