@@ -53,7 +53,7 @@ reverses it.
 
 - Primary metric is `output_tokens` (main rate-limited resource on Max plans)
 - Weekly limit is the primary focus; 5h window is secondary
-- Codex integration uses `account/rateLimits/read` over the documented local app-server protocol; select the weekly window by its 10,080-minute duration.
+- Codex integration uses `account/rateLimits/read` over the documented local app-server protocol; select windows by duration — 300 minutes for 5h, 10,080 for weekly — not by `primary`/`secondary` position.
 - Scan uses incremental cache: first run ~1s (reads all JSONL files), subsequent runs ~0.3s (only changed files). Cache keyed by file path + mtime + size.
 - String pre-filter (`'"usage"' not in line`) skips ~80% of JSONL lines before JSON parsing
 - No external dependencies — stdlib only Python, matches `tt` (time-tracker) conventions
